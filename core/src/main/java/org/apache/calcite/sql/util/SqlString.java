@@ -16,9 +16,12 @@
  */
 package org.apache.calcite.sql.util;
 
+
+import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.sql.SqlDialect;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 /**
  * String that represents a kocher SQL statement, expression, or fragment.
@@ -33,6 +36,8 @@ public class SqlString {
   private final String sql;
   private SqlDialect dialect;
   private ImmutableList<Integer> dynamicParameters;
+  private ImmutableMap<RexFieldAccess, Integer> rexFieldAccessIndexMap;
+
 
   /**
    * Creates a SqlString.
@@ -49,9 +54,15 @@ public class SqlString {
    * @param dynamicParameters indices
    */
   public SqlString(SqlDialect dialect, String sql, ImmutableList<Integer> dynamicParameters) {
-    this.dialect = dialect;
+    this(dialect, sql, dynamicParameters, ImmutableMap.of());
+  }
+
+  public SqlString(SqlDialect dialect, String sql, ImmutableList<Integer> dynamicParameters,
+                   ImmutableMap<RexFieldAccess, Integer> rexFieldAccessIndexMap) {
     this.sql = sql;
+    this.dialect = dialect;
     this.dynamicParameters = dynamicParameters;
+    this.rexFieldAccessIndexMap = rexFieldAccessIndexMap;
     assert sql != null : "sql must be NOT null";
     assert dialect != null : "dialect must be NOT null";
   }
@@ -94,6 +105,10 @@ public class SqlString {
    */
   public ImmutableList<Integer> getDynamicParameters() {
     return dynamicParameters;
+  }
+
+  public ImmutableMap<RexFieldAccess, Integer> getRexFieldAccessIndexMap() {
+    return rexFieldAccessIndexMap;
   }
 
   /**

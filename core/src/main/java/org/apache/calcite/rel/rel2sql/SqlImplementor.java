@@ -53,6 +53,7 @@ import org.apache.calcite.sql.SqlBinaryOperator;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlDynamicParam;
+import org.apache.calcite.sql.SqlFieldAccessCorrelate;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlJoin;
 import org.apache.calcite.sql.SqlKind;
@@ -672,8 +673,12 @@ public abstract class SqlImplementor {
           final Context correlAliasContext = getAliasContext(variable);
           final RexFieldAccess lastAccess = accesses.pollLast();
           assert lastAccess != null;
-          sqlIdentifier = (SqlIdentifier) correlAliasContext
-              .field(lastAccess.getField().getIndex());
+          if (correlAliasContext == null) {
+            return new SqlFieldAccessCorrelate((RexFieldAccess) rex, POS);
+          } else {
+            sqlIdentifier = (SqlIdentifier) correlAliasContext
+                .field(lastAccess.getField().getIndex());
+          }
           break;
         case ROW:
           final SqlNode expr = toSql(program, referencedExpr);

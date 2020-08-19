@@ -224,4 +224,33 @@ class EnumerableBatchNestedLoopJoinTest {
         .with(CalciteConnectionProperty.FORCE_DECORRELATE, forceDecorrelate)
         .withSchema("s", new ReflectiveSchema(schema));
   }
+
+
+  @Test void jdbcLeftBatchJoinTestSQL() {
+    CalciteAssert.model(JdbcTest.SCOTT_MODEL)
+        .query(
+            "select e1.empno, e1.ename from (select empno, ename, sal\n"
+                + "from scott.emp) e1 left join scott.emp m on\n"
+                + "e1.empno = m.empno and e1.sal = m.sal")
+        .withHook(Hook.PLANNER, (Consumer<RelOptPlanner>) planner -> {
+          planner.removeRule(EnumerableRules.ENUMERABLE_CORRELATE_RULE);
+          planner.addRule(EnumerableRules.ENUMERABLE_BATCH_NESTED_LOOP_JOIN_RULE);
+        })
+        .returnsUnordered(
+            "EMPNO=7369; ENAME=SMITH",
+            "EMPNO=7499; ENAME=ALLEN",
+            "EMPNO=7521; ENAME=WARD",
+            "EMPNO=7566; ENAME=JONES",
+            "EMPNO=7654; ENAME=MARTIN",
+            "EMPNO=7698; ENAME=BLAKE",
+            "EMPNO=7782; ENAME=CLARK",
+            "EMPNO=7788; ENAME=SCOTT",
+            "EMPNO=7839; ENAME=KING",
+            "EMPNO=7844; ENAME=TURNER",
+            "EMPNO=7876; ENAME=ADAMS",
+            "EMPNO=7900; ENAME=JAMES",
+            "EMPNO=7902; ENAME=FORD",
+            "EMPNO=7934; ENAME=MILLER");
+  }
+
 }

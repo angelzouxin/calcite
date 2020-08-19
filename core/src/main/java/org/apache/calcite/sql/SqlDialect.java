@@ -35,6 +35,7 @@ import org.apache.calcite.sql.type.BasicSqlType;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.sql.validate.SqlConformance;
 import org.apache.calcite.sql.validate.SqlConformanceEnum;
+import org.apache.calcite.util.Pair;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
@@ -47,6 +48,8 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -404,6 +407,107 @@ public class SqlDialect {
     final StringBuilder buf = new StringBuilder();
     quoteStringLiteral(buf, null, val);
     return buf.toString();
+  }
+
+  /**
+   * Convert sql with placeholders for correlate dynamicParam to query sql string.
+   * and identifiers dynamicParam type and position
+   *
+   * <p>For example, will convert following SQL
+   *
+   *
+   * <blockquote><pre>
+   * SELECT e.empno, e.ename, m.sal FROM (SELECT empno, ename FROM EMP) e
+   * LEFT JOIN (SELECT sal, empno, ename FROM EMP
+   *     WHERE ? = sal and ?1 = empno OR ?2 = empno) m
+   * ON e.empno = m.empno
+   * </pre>
+   * </blockquote>
+   *
+   * to
+   *
+   * <blockquote><pre>
+   * SELECT e.empno, e.ename, m.sal FROM (SELECT empno, ename FROM EMP) e
+   * LEFT JOIN (SELECT sal, empno, ename FROM EMP
+   *     WHERE ? = sal and ? = empno OR ? = empno) m
+   * ON e.empno = m.empno
+   * </pre>
+   * </blockquote>
+   *
+   * and return List of Pairs containing dynamicParam type and position
+   *
+   *
+   * @param querySqlSb query sql string builder
+   * @param sql sql string with placeholders
+   * @return List of Pairs containing dynamicParam type and position
+   */
+  public final List<Pair<SqlWriter.DynamicParamType, Integer>> getDynamicTypeIndexs(
+      StringBuilder querySqlSb, String sql) {
+    return getDynamicTypeIndexs(querySqlSb, sql, literalEscapedQuote);
+  }
+
+  public final List<Pair<SqlWriter.DynamicParamType, Integer>> getDynamicTypeIndexs(
+      StringBuilder querySqlSb, String sql, String literalEscapedQuote) {
+    // escape quote string with character "?"
+    boolean inQuote = false;
+    char lastQuote = '"';
+    Set<Integer> escapedIndex = new HashSet();
+    int index = sql.indexOf(literalEscapedQuote);
+    List<Pair<SqlWriter.DynamicParamType, Integer>> list = new ArrayList();
+    // find out all escape quote
+    while (index >= 0) {
+      escapedIndex.add(index);
+      index = sql.indexOf(literalEscapedQuote, index + 1);
+    }
+
+    for (int i = 0; i < sql.length(); i++) {
+      if (escapedIndex.contains(i)) {
+        // add escapedQuote and character to query string builder
+        querySqlSb.append(literalEscapedQuote);
+        i += literalEscapedQuote.length();
+        querySqlSb.append(sql.charAt(i));
+        continue;
+      }
+      char charAt = sql.charAt(i);
+      querySqlSb.append(sql.charAt(i));
+
+      // escape string literal
+      if (charAt == '"' || charAt == '\'') {
+        if (inQuote) {
+          inQuote = !(lastQuote == charAt);
+        } else {
+          inQuote = true;
+          lastQuote = charAt;
+        }
+        continue;
+      }
+      if (inQuote) {
+        continue;
+      }
+
+      // check placeholder type
+      if (charAt == '?') {
+        StringBuilder correlIndexStr = new StringBuilder();
+        i++;
+        while (i < sql.length()) {
+          charAt = sql.charAt(i);
+          if (Character.isDigit(charAt)) {
+            correlIndexStr.append(charAt);
+            i++;
+          } else {
+            querySqlSb.append(sql.charAt(i));
+            break;
+          }
+        }
+        if (correlIndexStr.length() == 0) {
+          list.add(new Pair(SqlWriter.DynamicParamType.DEFAULT, null));
+        } else {
+          Integer correlIndex = Integer.valueOf(correlIndexStr.toString());
+          list.add(new Pair(SqlWriter.DynamicParamType.CORRELATE, correlIndex));
+        }
+      }
+    }
+    return list;
   }
 
   /** Appends a string literal to a buffer.

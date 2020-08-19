@@ -17,6 +17,7 @@
 package org.apache.calcite.sql.pretty;
 
 import org.apache.calcite.avatica.util.Spaces;
+import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.sql.SqlBinaryOperator;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
@@ -32,6 +33,7 @@ import org.apache.calcite.util.trace.CalciteLogger;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import org.slf4j.LoggerFactory;
 
@@ -273,7 +275,8 @@ public class SqlPrettyWriter implements SqlWriter {
   private SqlWriterConfig config;
   private Bean bean;
   private int currentIndent;
-
+  private Map<RexFieldAccess, Integer> rexFieldAccessIndexMap = new HashMap();
+  private int currentRexFieldAccessIndex;
   private int lineStart;
 
   //~ Constructors -----------------------------------------------------------
@@ -910,7 +913,11 @@ public class SqlPrettyWriter implements SqlWriter {
   public SqlString toSqlString() {
     ImmutableList<Integer> dynamicParameters =
         this.dynamicParameters == null ? null : this.dynamicParameters.build();
-    return new SqlString(dialect, toString(), dynamicParameters);
+    ImmutableMap<RexFieldAccess, Integer> rexFieldAccessIndexImmutableMap =
+        this.rexFieldAccessIndexMap == null
+            ? ImmutableMap.of()
+            : ImmutableMap.copyOf(this.rexFieldAccessIndexMap);
+    return new SqlString(dialect, toString(), dynamicParameters, rexFieldAccessIndexImmutableMap);
   }
 
   public SqlDialect getDialect() {
@@ -1037,6 +1044,16 @@ public class SqlPrettyWriter implements SqlWriter {
 
   public void endFunCall(Frame frame) {
     endList(this.frame);
+  }
+
+  @Override public void fieldAccessCorrelate(RexFieldAccess fieldAccess) {
+    Integer index = rexFieldAccessIndexMap.get(fieldAccess);
+    if (index == null) {
+      index = currentRexFieldAccessIndex++;
+      rexFieldAccessIndexMap.put(fieldAccess, index);
+    }
+    print("?" + index);
+    setNeedWhitespace(true);
   }
 
   public Frame startList(String open, String close) {

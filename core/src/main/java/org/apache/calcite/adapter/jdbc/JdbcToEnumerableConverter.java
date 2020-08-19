@@ -22,6 +22,7 @@ import org.apache.calcite.adapter.enumerable.EnumerableRelImplementor;
 import org.apache.calcite.adapter.enumerable.JavaRowFormat;
 import org.apache.calcite.adapter.enumerable.PhysType;
 import org.apache.calcite.adapter.enumerable.PhysTypeImpl;
+import org.apache.calcite.adapter.enumerable.RexToLixTranslator;
 import org.apache.calcite.adapter.java.JavaTypeFactory;
 import org.apache.calcite.config.CalciteSystemProperty;
 import org.apache.calcite.linq4j.tree.BlockBuilder;
@@ -40,6 +41,9 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterImpl;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexCorrelVariable;
+import org.apache.calcite.rex.RexFieldAccess;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.runtime.Hook;
 import org.apache.calcite.runtime.SqlFunctions;
 import org.apache.calcite.schema.Schemas;
@@ -47,6 +51,10 @@ import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.util.BuiltInMethod;
+import org.apache.calcite.util.Pair;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -54,7 +62,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
@@ -78,7 +89,7 @@ public class JdbcToEnumerableConverter
   }
 
   @Override public RelOptCost computeSelfCost(RelOptPlanner planner,
-      RelMetadataQuery mq) {
+                                              RelMetadataQuery mq) {
     return super.computeSelfCost(planner, mq).multiplyBy(.1);
   }
 
@@ -160,7 +171,36 @@ public class JdbcToEnumerableConverter
 
     final Expression enumerable;
 
-    if (sqlString.getDynamicParameters() != null
+    if (sqlString.getRexFieldAccessIndexMap() != null
+          && !sqlString.getRexFieldAccessIndexMap().isEmpty()) {
+      StringBuilder querySqlSb = new StringBuilder();
+      List<ConstantExpression> indexCorrelateExpression =
+          toIndexCorrelateExpression(sqlString, querySqlSb, jdbcConvention.dialect);
+      final Expression querySql_ =
+          builder0.append("querySql_", Expressions.constant(querySqlSb.toString()));
+      Expression indexCorrelateMap =
+          builder0.append(
+              "indexCorrelateMap", Expressions.new_(HashMap.class), false);
+      generateCorrelate(implementor, sqlString.getRexFieldAccessIndexMap(),
+          builder0, indexCorrelateMap);
+      final Expression preparedStatementConsumer_ =
+          builder0.append("preparedStatementConsumer",
+              Expressions.call(BuiltInMethod.CREATE_CORRELATE_ENRICHER.method,
+                  Expressions.newArrayInit(Integer.class, 1,
+                      toIndexesTableExpression(sqlString)),
+                  DataContext.ROOT,
+                  indexCorrelateMap,
+                  Expressions.newArrayInit(Pair.class, 1,
+                      indexCorrelateExpression)));
+
+      enumerable = builder0.append("enumerable",
+          Expressions.call(
+              BuiltInMethod.RESULT_SET_ENUMERABLE_OF_PREPARED.method,
+              Schemas.unwrap(jdbcConvention.expression, DataSource.class),
+              querySql_,
+              rowBuilderFactory_,
+              preparedStatementConsumer_));
+    } else if (sqlString.getDynamicParameters() != null
         && !sqlString.getDynamicParameters().isEmpty()) {
       final Expression preparedStatementConsumer_ =
           builder0.append("preparedStatementConsumer",
@@ -195,7 +235,14 @@ public class JdbcToEnumerableConverter
   }
 
   private List<ConstantExpression> toIndexesTableExpression(SqlString sqlString) {
-    return sqlString.getDynamicParameters().stream()
+    return Optional.ofNullable(sqlString.getDynamicParameters()).orElse(ImmutableList.of()).stream()
+        .map(Expressions::constant)
+        .collect(Collectors.toList());
+  }
+
+  private List<ConstantExpression> toIndexCorrelateExpression(SqlString sqlString,
+      StringBuilder querySqlSb, SqlDialect sqlDialect) {
+    return sqlDialect.getDynamicTypeIndexs(querySqlSb, sqlString.getSql()).stream()
         .map(Expressions::constant)
         .collect(Collectors.toList());
   }
@@ -302,6 +349,25 @@ public class JdbcToEnumerableConverter
               : BuiltInMethod.TIMESTAMP_TO_LONG)).method;
     default:
       throw new AssertionError(sqlTypeName + ":" + nullable);
+    }
+  }
+
+  private void generateCorrelate(EnumerableRelImplementor implementor,
+      ImmutableMap<RexFieldAccess, Integer> rexFieldAccessIndexMap, BlockBuilder blockBuilder,
+      Expression indexCorrelateMap) {
+    for (Map.Entry<RexFieldAccess, Integer> entry : rexFieldAccessIndexMap.entrySet()) {
+      RexFieldAccess fieldAccess = entry.getKey();
+      Integer index = entry.getValue();
+      final RexNode target = fieldAccess.getReferenceExpr();
+      int fieldIndex = fieldAccess.getField().getIndex();
+      final RexToLixTranslator.InputGetter getter =
+          implementor.getCorrelVariableGetter(((RexCorrelVariable) target).getName());
+      final Expression input = getter.field(blockBuilder, fieldIndex, null);
+      blockBuilder.add(
+          Expressions.statement(
+              Expressions.call(indexCorrelateMap, BuiltInMethod.MAP_PUT.method,
+                  Expressions.constant(index, Integer.class), input
+              )));
     }
   }
 

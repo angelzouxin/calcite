@@ -25,6 +25,8 @@ import org.apache.calcite.linq4j.Linq4j;
 import org.apache.calcite.linq4j.function.Function0;
 import org.apache.calcite.linq4j.function.Function1;
 import org.apache.calcite.linq4j.tree.Primitive;
+import org.apache.calcite.sql.SqlWriter;
+import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Static;
 
 import org.slf4j.Logger;
@@ -52,6 +54,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 
 /**
@@ -189,6 +192,34 @@ public class ResultSetEnumerable<T> extends AbstractEnumerable<T> {
         final int index = indexes[i];
         setDynamicParam(preparedStatement, i + 1,
             context.get("?" + index));
+      }
+    };
+  }
+
+  /** Called from generated code that proposes to create a
+   * {@code ResultSetEnumerable} over a prepared statement with correlate param. */
+  public static PreparedStatementEnricher createCorrelateEnricher(Integer[] indexes,
+       DataContext context, Map<Integer, Object> indexCorrelMap,
+       Pair<SqlWriter.DynamicParamType, Integer>[] dynamicTypeIndexs) {
+    return preparedStatement -> {
+      int defaultDynamicIndex = 0;
+      for (int i = 0; i < dynamicTypeIndexs.length; i++) {
+        Pair<SqlWriter.DynamicParamType, Integer> dynamicTypeIndex = dynamicTypeIndexs[i];
+        // get type: default dynamicParam type 0 or correlate param type
+        SqlWriter.DynamicParamType type = dynamicTypeIndex.getKey();
+        if (SqlWriter.DynamicParamType.DEFAULT == type) {
+          // get default dynamic param
+          final int index = indexes[defaultDynamicIndex];
+          setDynamicParam(preparedStatement, i + 1,
+              context.get("?" + index));
+          // update index
+          ++defaultDynamicIndex;
+        } else {
+          // get correlate param
+          Integer correlIndex = dynamicTypeIndex.getValue();
+          setDynamicParam(preparedStatement, i + 1,
+              indexCorrelMap.get(correlIndex));
+        }
       }
     };
   }
