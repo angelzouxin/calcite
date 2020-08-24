@@ -210,6 +210,31 @@ public class JdbcTest {
       + "   ]\n"
       + "}";
 
+  public static final String MY_SCHEMA = "{\n" +
+      "  \"version\": \"1.0\",\n" +
+      "  \"defaultSchema\": \"dsp\",\n" +
+      "  \"schemas\": [\n" +
+      "    {\n" +
+      "      \"type\": \"jdbc\",\n" +
+      "      \"name\": \"dsp_alarm\",\n" +
+      "      \"jdbcUser\": \"root\",\n" +
+      "      \"jdbcPassword\": \"123456\",\n" +
+      "      \"jdbcUrl\": \"jdbc:mysql://192.168.104.42:3306/dsp_alarm\",\n" +
+      "      \"jdbcDriver\": \"com.mysql.jdbc.Driver\",\n" +
+      "      \"sqlDialectFactory\": \"org.apache.calcite.sql.SqlDialectFactoryImpl\"\n" +
+      "    },\n" +
+      "    {\n" +
+      "      \"type\": \"jdbc\",\n" +
+      "      \"name\": \"dsp\",\n" +
+      "      \"jdbcUser\": \"root\",\n" +
+      "      \"jdbcPassword\": \"1q2w3e\",\n" +
+      "      \"jdbcUrl\": \"jdbc:mysql://192.168.115.125:3358/dsp\",\n" +
+      "      \"jdbcDriver\": \"com.mysql.jdbc.Driver\",\n" +
+      "      \"sqlDialectFactory\": \"org.apache.calcite.sql.SqlDialectFactoryImpl\"\n" +
+      "    }\n" +
+      "  ]\n" +
+      "}";
+
   public static final String HR_SCHEMA = "     {\n"
       + "       type: 'custom',\n"
       + "       name: 'hr',\n"

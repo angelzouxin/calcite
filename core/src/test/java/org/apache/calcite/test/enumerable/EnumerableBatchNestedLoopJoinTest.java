@@ -227,30 +227,25 @@ class EnumerableBatchNestedLoopJoinTest {
 
 
   @Test void jdbcLeftBatchJoinTestSQL() {
-    CalciteAssert.model(JdbcTest.SCOTT_MODEL)
+    String sql = "SELECT id, brand_id, category_id, name, fee FROM dsp.ad_group where business_type=524288 and yn=1 and campaign_type=26  and campaign_id=102384338";
+    String sql1 = "SELECT brand_code, barndname_full from dsp_alarm.dim_item_brand";
+    String sql2 = "SELECT dim_item_gen_third_cate_id, dim_item_gen_third_cate_name from dsp_alarm.dim_item_gen_third_cate_re_right";
+    String sql3 = "SELECT dsp.id groupId, dsp.name groupName, dsp.category_id cid3, dsp.brand_id brandId, alarm1.barndname_full brandName, alarm2.dim_item_gen_third_cate_name cid3Name\n" +
+        "FROM (" + sql +") dsp LEFT JOIN (" + sql1 +") alarm1 ON dsp.brand_id = alarm1.brand_code LEFT JOIN (" + sql2 + ") alarm2 ON dsp.category_id = alarm2.dim_item_gen_third_cate_id";
+
+    CalciteAssert.model(JdbcTest.MY_SCHEMA)
+        .with(Lex.MYSQL)
         .query(
-            "select e1.empno, e1.ename from (select empno, ename, sal\n"
-                + "from scott.emp) e1 left join scott.emp m on\n"
-                + "e1.empno = m.empno and e1.sal = m.sal")
+            sql3)
         .withHook(Hook.PLANNER, (Consumer<RelOptPlanner>) planner -> {
           planner.removeRule(EnumerableRules.ENUMERABLE_CORRELATE_RULE);
           planner.addRule(EnumerableRules.ENUMERABLE_BATCH_NESTED_LOOP_JOIN_RULE);
         })
         .returnsUnordered(
-            "EMPNO=7369; ENAME=SMITH",
-            "EMPNO=7499; ENAME=ALLEN",
-            "EMPNO=7521; ENAME=WARD",
-            "EMPNO=7566; ENAME=JONES",
-            "EMPNO=7654; ENAME=MARTIN",
-            "EMPNO=7698; ENAME=BLAKE",
-            "EMPNO=7782; ENAME=CLARK",
-            "EMPNO=7788; ENAME=SCOTT",
-            "EMPNO=7839; ENAME=KING",
-            "EMPNO=7844; ENAME=TURNER",
-            "EMPNO=7876; ENAME=ADAMS",
-            "EMPNO=7900; ENAME=JAMES",
-            "EMPNO=7902; ENAME=FORD",
-            "EMPNO=7934; ENAME=MILLER");
+            "groupId=102384339; groupName=南梦蔻（Nemowco）_衬衫; cid3=1348; brandId=13348; " +
+                "brandName=南梦蔻（Nemowco）; cid3Name=衬衫",
+            "groupId=102384340; groupName=未知_空调; cid3=870; brandId=0; brandName=null; " +
+            "cid3Name=空调");
   }
 
 }

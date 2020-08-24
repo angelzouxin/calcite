@@ -60,6 +60,7 @@ dependencies {
     implementation("org.codehaus.janino:commons-compiler")
     implementation("org.codehaus.janino:janino")
     implementation("org.slf4j:slf4j-api")
+    implementation("mysql:mysql-connector-java:5.1.48")
 
     testH2("com.h2database:h2")
     testMysql("mysql:mysql-connector-java")
